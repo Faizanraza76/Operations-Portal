@@ -1,35 +1,47 @@
-export class AppError extends Error {
-  statusCode: number;
-  details?: unknown;
+import { createContext, useContext, useState, ReactNode } from "react";
+import { api } from "../api/client";
 
-  constructor(message: string, statusCode = 400, details?: unknown) {
-    super(message);
-    this.statusCode = statusCode;
-    this.details = details;
-    Object.setPrototypeOf(this, AppError.prototype);
-  }
+export type Role = "ADMIN" | "SALES" | "WAREHOUSE" | "ACCOUNTS";
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
 }
 
-export class NotFoundError extends AppError {
-  constructor(message = "Resource not found") {
-    super(message, 404);
-  }
+interface AuthContextValue {
+  user: User | null;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
 }
 
-export class UnauthorizedError extends AppError {
-  constructor(message = "Unauthorized") {
-    super(message, 401);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(() => {
+    const raw = localStorage.getItem("user");
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  async function login(email: string, password: string) {
+    const res = await api.post("/auth/login", { email, password });
+    localStorage.setItem("token", res.data.token);
+    localStorage.setItem("user", JSON.stringify(res.data.user));
+    setUser(res.data.user);
   }
+
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+  }
+
+  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
 }
 
-export class ForbiddenError extends AppError {
-  constructor(message = "You do not have permission to perform this action") {
-    super(message, 403);
-  }
-}
-
-export class ConflictError extends AppError {
-  constructor(message = "Conflict", details?: unknown) {
-    super(message, 409, details);
-  }
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }

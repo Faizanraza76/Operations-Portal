@@ -1,106 +1,122 @@
-import { Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "./context/AuthContext";
-import Login from "./pages/Login";
-import Customers from "./pages/Customers";
-import CustomerDetail from "./pages/CustomerDetail";
-import Products from "./pages/Products";
-import Challans from "./pages/Challans";
-import ChallanCreate from "./pages/ChallanCreate";
-import ChallanDetail from "./pages/ChallanDetail";
+import { useEffect, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
-function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  if (!user) return <Navigate to="/login" replace />;
-
-  function handleLogout() {
-    logout();
-    navigate("/login");
-  }
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <h1>ERP / CRM Portal</h1>
-        <nav>
-          <NavLink to="/customers" className={({ isActive }) => (isActive ? "active" : "")}>
-            Customers
-          </NavLink>
-          <NavLink to="/products" className={({ isActive }) => (isActive ? "active" : "")}>
-            Products &amp; Inventory
-          </NavLink>
-          <NavLink to="/challans" className={({ isActive }) => (isActive ? "active" : "")}>
-            Sales Challans
-          </NavLink>
-        </nav>
-        <div className="user-box">
-          <div>{user.name}</div>
-          <div>{user.role}</div>
-          <a href="#" onClick={handleLogout} style={{ color: "#fff", marginTop: 8, display: "inline-block" }}>
-            Log out
-          </a>
-        </div>
-      </aside>
-      <div className="main-content">{children}</div>
-    </div>
-  );
+interface FollowUp {
+  id: string;
+  note: string;
+  createdAt: string;
 }
 
-export default function App() {
+interface ChallanSummary {
+  id: string;
+  challanNumber: string;
+  status: string;
+  totalQuantity: number;
+  createdAt: string;
+}
+
+interface CustomerFull {
+  id: string;
+  name: string;
+  mobile: string;
+  email?: string;
+  businessName?: string;
+  gstNumber?: string;
+  customerType: string;
+  address?: string;
+  status: string;
+  notes?: string;
+  followUps: FollowUp[];
+  challans: ChallanSummary[];
+}
+
+export default function CustomerDetail() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const [customer, setCustomer] = useState<CustomerFull | null>(null);
+  const [note, setNote] = useState("");
+  const canManage = user?.role === "ADMIN" || user?.role === "SALES";
+
+  async function load() {
+    const res = await api.get(`/customers/${id}`);
+    setCustomer(res.data);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  async function addFollowUp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!note.trim()) return;
+    await api.post(`/customers/${id}/follow-ups`, { note });
+    setNote("");
+    load();
+  }
+
+  if (!customer) return <p className="muted">Loading...</p>;
+
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/customers"
-        element={
-          <ProtectedLayout>
-            <Customers />
-          </ProtectedLayout>
-        }
-      />
-      <Route
-        path="/customers/:id"
-        element={
-          <ProtectedLayout>
-            <CustomerDetail />
-          </ProtectedLayout>
-        }
-      />
-      <Route
-        path="/products"
-        element={
-          <ProtectedLayout>
-            <Products />
-          </ProtectedLayout>
-        }
-      />
-      <Route
-        path="/challans"
-        element={
-          <ProtectedLayout>
-            <Challans />
-          </ProtectedLayout>
-        }
-      />
-      <Route
-        path="/challans/new"
-        element={
-          <ProtectedLayout>
-            <ChallanCreate />
-          </ProtectedLayout>
-        }
-      />
-      <Route
-        path="/challans/:id"
-        element={
-          <ProtectedLayout>
-            <ChallanDetail />
-          </ProtectedLayout>
-        }
-      />
-      <Route path="/" element={<Navigate to="/customers" replace />} />
-      <Route path="*" element={<Navigate to="/customers" replace />} />
-    </Routes>
+    <div>
+      <div className="page-header">
+        <h2>{customer.name}</h2>
+        <Link to="/customers" className="btn secondary">Back to customers</Link>
+      </div>
+
+      <div className="card">
+        <div className="form-grid">
+          <div><label>Mobile</label>{customer.mobile}</div>
+          <div><label>Email</label>{customer.email || "-"}</div>
+          <div><label>Business</label>{customer.businessName || "-"}</div>
+          <div><label>GST</label>{customer.gstNumber || "-"}</div>
+          <div><label>Type</label>{customer.customerType}</div>
+          <div><label>Status</label><span className={`badge ${customer.status.toLowerCase()}`}>{customer.status}</span></div>
+          <div style={{ gridColumn: "1 / -1" }}><label>Address</label>{customer.address || "-"}</div>
+          <div style={{ gridColumn: "1 / -1" }}><label>Notes</label>{customer.notes || "-"}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Recent challans</h3>
+        <table>
+          <thead>
+            <tr><th>Challan #</th><th>Status</th><th>Qty</th><th>Date</th></tr>
+          </thead>
+          <tbody>
+            {customer.challans.map((c) => (
+              <tr key={c.id}>
+                <td><Link to={`/challans/${c.id}`}>{c.challanNumber}</Link></td>
+                <td><span className={`badge ${c.status.toLowerCase()}`}>{c.status}</span></td>
+                <td>{c.totalQuantity}</td>
+                <td>{new Date(c.createdAt).toLocaleDateString()}</td>
+              </tr>
+            ))}
+            {customer.challans.length === 0 && (
+              <tr><td colSpan={4} className="muted">No challans yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Follow-up notes</h3>
+        {canManage && (
+          <form onSubmit={addFollowUp} style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <input placeholder="Add a follow-up note..." value={note} onChange={(e) => setNote(e.target.value)} />
+            <button className="btn" type="submit">Add</button>
+          </form>
+        )}
+        {customer.followUps.map((f) => (
+          <div key={f.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #eee" }}>
+            <div>{f.note}</div>
+            <div className="muted">{new Date(f.createdAt).toLocaleString()}</div>
+          </div>
+        ))}
+        {customer.followUps.length === 0 && <p className="muted">No follow-up notes yet.</p>}
+      </div>
+    </div>
   );
 }

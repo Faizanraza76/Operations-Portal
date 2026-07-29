@@ -1,189 +1,189 @@
-:root {
-  --bg: #f4f6f8;
-  --surface: #ffffff;
-  --border: #e2e5e9;
-  --text: #1f2430;
-  --text-muted: #6b7280;
-  --primary: #2f5fdb;
-  --primary-dark: #2447ad;
-  --danger: #d84343;
-  --success: #1f9d55;
-  --warning: #b8860b;
-  --radius: 8px;
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  category?: string;
+  unitPrice: string;
+  currentStock: number;
+  minStock: number;
+  location?: string;
 }
 
-* { box-sizing: border-box; }
+const emptyForm = { name: "", sku: "", category: "", unitPrice: 0, minStock: 0, location: "" };
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+export default function Products() {
+  const { user } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState<string | null>(null);
+  const [movementFor, setMovementFor] = useState<Product | null>(null);
+  const [movement, setMovement] = useState({ quantity: 1, movementType: "IN", reason: "" });
+
+  const canManage = user?.role === "ADMIN" || user?.role === "WAREHOUSE";
+
+  async function load() {
+    const res = await api.get("/products", {
+      params: { search: search || undefined, lowStockOnly: lowStockOnly || undefined },
+    });
+    setProducts(res.data.items);
+  }
+
+  useEffect(() => {
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, lowStockOnly]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.post("/products", { ...form, unitPrice: Number(form.unitPrice), minStock: Number(form.minStock) });
+      setShowForm(false);
+      setForm(emptyForm);
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Could not create product");
+    }
+  }
+
+  async function handleMovement(e: React.FormEvent) {
+    e.preventDefault();
+    if (!movementFor) return;
+    setError(null);
+    try {
+      await api.post(`/products/${movementFor.id}/stock-movements`, {
+        ...movement,
+        quantity: Number(movement.quantity),
+      });
+      setMovementFor(null);
+      setMovement({ quantity: 1, movementType: "IN", reason: "" });
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Could not record stock movement");
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>Products &amp; Inventory</h2>
+        {canManage && (
+          <button className="btn" onClick={() => setShowForm((s) => !s)}>
+            {showForm ? "Cancel" : "+ Add product"}
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <form className="card" onSubmit={handleCreate}>
+          <div className="form-grid">
+            <div className="form-row">
+              <label>Name</label>
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>SKU / code</label>
+              <input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>Category</label>
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>Unit price</label>
+              <input type="number" step="0.01" required value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })} />
+            </div>
+            <div className="form-row">
+              <label>Minimum stock alert qty</label>
+              <input type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: Number(e.target.value) })} />
+            </div>
+            <div className="form-row">
+              <label>Location / warehouse</label>
+              <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            </div>
+          </div>
+          {error && <div className="error-text">{error}</div>}
+          <button className="btn" type="submit">Save product</button>
+        </form>
+      )}
+
+      {movementFor && (
+        <form className="card" onSubmit={handleMovement}>
+          <h3 style={{ marginTop: 0 }}>Stock movement — {movementFor.name}</h3>
+          <div className="form-grid">
+            <div className="form-row">
+              <label>Movement type</label>
+              <select value={movement.movementType} onChange={(e) => setMovement({ ...movement, movementType: e.target.value })}>
+                <option value="IN">IN</option>
+                <option value="OUT">OUT</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label>Quantity</label>
+              <input type="number" min={1} required value={movement.quantity} onChange={(e) => setMovement({ ...movement, quantity: Number(e.target.value) })} />
+            </div>
+            <div className="form-row" style={{ gridColumn: "1 / -1" }}>
+              <label>Reason</label>
+              <input required value={movement.reason} onChange={(e) => setMovement({ ...movement, reason: e.target.value })} placeholder="e.g. Purchase order received, damaged stock write-off..." />
+            </div>
+          </div>
+          {error && <div className="error-text">{error}</div>}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn" type="submit">Record movement</button>
+            <button className="btn secondary" type="button" onClick={() => setMovementFor(null)}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      <div className="toolbar">
+        <input placeholder="Search by name or SKU..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 320 }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, width: "auto" }}>
+          <input type="checkbox" style={{ width: "auto" }} checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} />
+          Low stock only
+        </label>
+      </div>
+
+      <div className="card" style={{ padding: 0 }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>SKU</th><th>Category</th><th>Unit price</th><th>Stock</th><th>Location</th>{canManage && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => (
+              <tr key={p.id}>
+                <td>{p.name}</td>
+                <td>{p.sku}</td>
+                <td>{p.category || "-"}</td>
+                <td>₹{p.unitPrice}</td>
+                <td className={p.currentStock <= p.minStock ? "stock-low" : ""}>
+                  {p.currentStock} {p.currentStock <= p.minStock && "(low)"}
+                </td>
+                <td>{p.location || "-"}</td>
+                {canManage && (
+                  <td>
+                    <button className="btn secondary" onClick={() => setMovementFor(p)}>
+                      Adjust stock
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {products.length === 0 && (
+              <tr><td colSpan={7} className="muted" style={{ padding: 20 }}>No products found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
-
-.app-shell {
-  display: flex;
-  min-height: 100vh;
-}
-
-.sidebar {
-  width: 220px;
-  background: #171d2b;
-  color: #fff;
-  padding: 20px 0;
-  flex-shrink: 0;
-}
-
-.sidebar h1 {
-  font-size: 16px;
-  padding: 0 20px 20px;
-  margin: 0;
-  border-bottom: 1px solid #2b3346;
-}
-
-.sidebar nav {
-  display: flex;
-  flex-direction: column;
-  margin-top: 10px;
-}
-
-.sidebar nav a {
-  color: #c6cbd8;
-  text-decoration: none;
-  padding: 10px 20px;
-  font-size: 14px;
-}
-
-.sidebar nav a.active,
-.sidebar nav a:hover {
-  background: #232b3d;
-  color: #fff;
-}
-
-.sidebar .user-box {
-  padding: 16px 20px;
-  border-top: 1px solid #2b3346;
-  margin-top: 20px;
-  font-size: 13px;
-  color: #9aa1b3;
-}
-
-.main-content {
-  flex: 1;
-  padding: 28px 32px;
-  max-width: 1200px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.btn {
-  display: inline-block;
-  padding: 8px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.btn:hover { background: var(--primary-dark); }
-.btn.secondary { background: transparent; color: var(--primary); }
-.btn.danger { background: var(--danger); border-color: var(--danger); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-th, td {
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
-
-tr:hover td { background: #fafbfc; }
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.badge.lead { background: #fdf1d6; color: var(--warning); }
-.badge.active { background: #e3f7e9; color: var(--success); }
-.badge.inactive { background: #f0f0f0; color: var(--text-muted); }
-.badge.draft { background: #eef1f6; color: var(--text-muted); }
-.badge.confirmed { background: #e3f7e9; color: var(--success); }
-.badge.cancelled { background: #fbe4e4; color: var(--danger); }
-
-input, select, textarea {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 14px;
-  width: 100%;
-}
-
-label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; }
-.form-row { margin-bottom: 14px; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-
-.toolbar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
-
-.login-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #171d2b, #2f5fdb);
-}
-
-.login-card {
-  background: #fff;
-  padding: 32px;
-  border-radius: 12px;
-  width: 340px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-}
-
-.login-card h1 { font-size: 18px; margin: 0 0 6px; }
-.login-card p.sub { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }
-
-.error-text { color: var(--danger); font-size: 13px; margin-top: 6px; }
-.muted { color: var(--text-muted); font-size: 13px; }
-
-.item-row {
-  display: grid;
-  grid-template-columns: 2fr 1fr auto;
-  gap: 10px;
-  align-items: end;
-  margin-bottom: 10px;
-}
-
-.stock-low { color: var(--danger); font-weight: 600; }

@@ -1,56 +1,106 @@
-import { Router } from "express";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { validate } from "../middleware/validate";
-import { asyncHandler } from "../middleware/errorHandler";
-import {
-  createChallanSchema,
-  updateChallanSchema,
-  idParamSchema,
-  listChallanQuerySchema,
-} from "../schemas/challan.schema";
-import {
-  createChallan,
-  listChallans,
-  getChallan,
-  updateChallan,
-  confirmChallan,
-  cancelChallan,
-} from "../controllers/challan.controller";
+import { Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
+import Login from "./pages/Login";
+import Customers from "./pages/Customers";
+import CustomerDetail from "./pages/CustomerDetail";
+import Products from "./pages/Products";
+import Challans from "./pages/Challans";
+import ChallanCreate from "./pages/ChallanCreate";
+import ChallanDetail from "./pages/ChallanDetail";
 
-const router = Router();
+function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-router.use(requireAuth);
+  if (!user) return <Navigate to="/login" replace />;
 
-router.get("/", validate(listChallanQuerySchema), asyncHandler(listChallans));
-router.get("/:id", validate(idParamSchema), asyncHandler(getChallan));
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
 
-// Sales creates/edits/confirms challans; Admin can do everything; Accounts/Warehouse read-only.
-router.post(
-  "/",
-  requireRole("ADMIN", "SALES"),
-  validate(createChallanSchema),
-  asyncHandler(createChallan)
-);
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <h1>ERP / CRM Portal</h1>
+        <nav>
+          <NavLink to="/customers" className={({ isActive }) => (isActive ? "active" : "")}>
+            Customers
+          </NavLink>
+          <NavLink to="/products" className={({ isActive }) => (isActive ? "active" : "")}>
+            Products &amp; Inventory
+          </NavLink>
+          <NavLink to="/challans" className={({ isActive }) => (isActive ? "active" : "")}>
+            Sales Challans
+          </NavLink>
+        </nav>
+        <div className="user-box">
+          <div>{user.name}</div>
+          <div>{user.role}</div>
+          <a href="#" onClick={handleLogout} style={{ color: "#fff", marginTop: 8, display: "inline-block" }}>
+            Log out
+          </a>
+        </div>
+      </aside>
+      <div className="main-content">{children}</div>
+    </div>
+  );
+}
 
-router.put(
-  "/:id",
-  requireRole("ADMIN", "SALES"),
-  validate(updateChallanSchema),
-  asyncHandler(updateChallan)
-);
-
-router.post(
-  "/:id/confirm",
-  requireRole("ADMIN", "SALES"),
-  validate(idParamSchema),
-  asyncHandler(confirmChallan)
-);
-
-router.post(
-  "/:id/cancel",
-  requireRole("ADMIN", "SALES"),
-  validate(idParamSchema),
-  asyncHandler(cancelChallan)
-);
-
-export default router;
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/customers"
+        element={
+          <ProtectedLayout>
+            <Customers />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/customers/:id"
+        element={
+          <ProtectedLayout>
+            <CustomerDetail />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/products"
+        element={
+          <ProtectedLayout>
+            <Products />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/challans"
+        element={
+          <ProtectedLayout>
+            <Challans />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/challans/new"
+        element={
+          <ProtectedLayout>
+            <ChallanCreate />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/challans/:id"
+        element={
+          <ProtectedLayout>
+            <ChallanDetail />
+          </ProtectedLayout>
+        }
+      />
+      <Route path="/" element={<Navigate to="/customers" replace />} />
+      <Route path="*" element={<Navigate to="/customers" replace />} />
+    </Routes>
+  );
+}

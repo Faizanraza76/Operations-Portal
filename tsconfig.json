@@ -1,14 +1,9 @@
-import jwt, { SignOptions } from "jsonwebtoken";
-import { Role } from "@prisma/client";
-import { AuthPayload } from "../middleware/auth";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-export function signToken(payload: AuthPayload): string {
-  const options: SignOptions = {
-    expiresIn: (process.env.JWT_EXPIRES_IN || "8h") as SignOptions["expiresIn"],
-  };
-  return jwt.sign(payload, process.env.JWT_SECRET as string, options);
-}
-
-export function buildAuthPayload(user: { id: string; role: Role; email: string }): AuthPayload {
-  return { userId: user.id, role: user.role, email: user.email };
-}
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+  },
+});
